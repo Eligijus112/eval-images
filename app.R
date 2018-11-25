@@ -3,6 +3,7 @@ library(data.table)
 library(magrittr)
 library(icesTAF)
 library(reticulate)
+library(jpeg)
 py_install(c('scipy', 'numpy', 'pandas', 'tensorflow', 'opencv-python'))
 
 import('numpy')
@@ -19,14 +20,15 @@ ui <- fluidPage(
       sidebarPanel(
         
         fileInput("img", "Choose an image",
-                  multiple = FALSE, 
+                  multiple = TRUE, 
                   accept = c('image/png', 'image/jpeg')),
         
         actionButton('source_py',
-                     "Evaluate image"), 
+                     "Evaluate images"), 
         
-        actionButton('show_info', 
-                     'Show evaluated information')
+        actionButton('show', 'Show evaluation'),
+        
+        selectInput('Image', 'Select image', "")
       ),
       
       mainPanel(
@@ -35,9 +37,11 @@ ui <- fluidPage(
    )
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
    
   observeEvent(input$img, {
+    unlink('input', recursive = TRUE)
+    unlink('output', recursive = TRUE)
     mkdir('input')
     do.call(file.remove, list(list.files("input/", full.names = TRUE)))
     inFile <- input$img
@@ -55,20 +59,50 @@ server <- function(input, output) {
     })
   })
   
-  observeEvent(input$show_info, {
+  observeEvent(input$show, {
     
-    # browser()
-    d <- fread('output/fitted_clases.csv') %>% 
-      .[order(p)] 
-    
-    output$barplot <- renderPlot({
-      par(las=2) 
-      par(mar=c(5,8,4,2))
-      barplot(d$p, names.arg = d$class_label, horiz = TRUE,  cex.names=0.9, 
-              main = 'Probabilty of class', xpd = FALSE, col = adjustcolor('blue', 0.5))
-    })
+    if(length(grep('fitted_clases.csv', list.files('output/')))!=0 & !is.null(input$Image)){
+      d <- fread('output/fitted_clases.csv') %>% 
+        .[order(p)] %>%
+        .[path == paste0("input/", input$Image)]
+      
+      output$barplot <- renderPlot({
+        par(las=2) 
+        par(mar=c(5,8,4,2))
+        barplot(d$p, names.arg = d$class_label, horiz = TRUE,  cex.names=0.9, 
+                main = 'Probabilty of class', xpd = FALSE, col = adjustcolor('blue', 0.5))
+      })
+    }
   })
+  
+  observeEvent(input$Image, {
+    
+    if(length(grep('fitted_clases.csv', list.files('output/')))!=0){
+      d <- fread('output/fitted_clases.csv') %>% 
+        .[order(p)] %>%
+        .[path == paste0("input/", input$Image)]
+      
+        output$barplot <- renderPlot({
+          par(las=2) 
+          par(mar=c(5,8,4,2))
+          barplot(d$p, names.arg = d$class_label, horiz = TRUE,  cex.names=0.9, 
+                  main = 'Probabilty of class', xpd = FALSE, col = adjustcolor('blue', 0.5))
+        })
+      }
+    })
+  
+  outVar = reactive({
+    if(!is.null(input$img)){
+      input$img$name
+    }
+  })
+  
+  observe({
+    if(!is.null(outVar())){
+      updateSelectInput(session, "Image",
+                        choices = outVar()
+      )}
+    })
 }
 
 shinyApp(ui = ui, server = server)
-
